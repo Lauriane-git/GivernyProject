@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
+# Define the VAE model with Gaussian output in the decoder
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -8,36 +9,48 @@ from torchvision import transforms
 
 from dataloader import MonetDataset
 
+# https://github.com/podgorskiy/VAE/blob/master/net.py
 
-# Define the VAE model with Gaussian output in the decoder
+input_size = 128 * 128  # monet images are 256 * 256 pixels, we resize them to 128 * 128
+
+
 class VAE(nn.Module):
-    def __init__(self, input_size, latent_size):
+    def __init__(self, input_channels, latent_size):
         super(VAE, self).__init__()
 
         # Encoder
         self.encoder = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(input_size, 256),
+            nn.Conv2d(input_channels, 32, kernel_size=4, stride=2, padding=1),
             nn.ReLU(),
-            nn.Linear(256, 128),
+            nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1),
+            nn.ReLU(),
+            nn.Flatten(),
+            nn.Linear(32768, 256),  # Adjust the input size based on the image dimensions
             nn.ReLU(),
         )
 
-        self.z_mean = nn.Linear(128, latent_size)
-        self.z_log_var = nn.Linear(128, latent_size)
+        self.z_mean = nn.Linear(256, latent_size)
+        self.z_log_var = nn.Linear(256, latent_size)
 
         # Decoder
         self.decoder = nn.Sequential(
-            nn.Linear(latent_size, 128),
+            nn.Linear(latent_size, 256),
             nn.ReLU(),
-            nn.Linear(128, 256),
+            nn.Linear(256, input_size),  # Adjust the output size based on the image dimensions
             nn.ReLU(),
-            nn.Linear(256, input_size),
+            nn.Unflatten(1, (128, 128)),  # Reshape to the shape before flattening in the encoder
+            nn.ConvTranspose2d(16, 64, kernel_size=3, stride=1, padding=1, dilation=1),
+            nn.ReLU(),
+            nn.ConvTranspose2d(64, 32, kernel_size=3, stride=1, padding=1, dilation=1),
+            nn.ReLU(),
+            nn.ConvTranspose2d(32, input_channels, kernel_size=3, stride=1, padding=1, dilation=1),
             nn.Tanh(),  # Tanh activation for the output layer to ensure values between -1 and 1
         )
 
-        self.dec_mean = nn.Linear(input_size, input_size)
-        self.dec_log_var = nn.Linear(input_size, input_size)
+        self.dec_mean = nn.Linear(128, 128)
+        self.dec_log_var = nn.Linear(128, 128)
 
     def reparameterize(self, mu, log_var):
         std = torch.exp(0.5 * log_var)
@@ -75,11 +88,11 @@ def vae_loss(x, x_mean, x_log_var, mu, log_var):
 if __name__ == '__main__':
     # Hyperparameters
     IMAGE_DIM = 256
-    num_epochs = 512
+    num_epochs = 1
     batch_size = 16
+    channels = 1
     learning_rate = 1e-4
     weigth_decay = 1e-3
-    input_size = 128 * 128  # monet images are 256 * 256 pixels, we resize them to 128 * 128
     latent_size = 40  # Size of the latent space, hyperparameter to optimize
 
     # LOAD IMAGES
@@ -108,13 +121,15 @@ if __name__ == '__main__':
     monet_dataset = MonetDataset(data_path, transform)
 
     # Initialize data loaders
-    monet_loader = DataLoader(monet_dataset, batch_size=batch_size, shuffle=True)
+    monet_loader = DataLoader(monet_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
 
     # TRAIN THE MODEL
 
     # Initialize Gaussian VAE model
-    vae = VAE(input_size, latent_size).to(device)
+    vae = VAE(channels, latent_size).to(device)
     print("model initialized")
+
+    # torchsummary.summary(vae, (1, 128, 128))
 
     # Optimizer
     optimizer = optim.Adam(vae.parameters(), lr=learning_rate)
@@ -125,7 +140,7 @@ if __name__ == '__main__':
     for epoch in range(epochs):
         vae.train()
         for batch_idx, data in enumerate(monet_loader):
-            data = data.view(-1, input_size)
+
             optimizer.zero_grad()
 
             x_mean, x_log_var, mu, log_var = vae(data)
@@ -134,28 +149,27 @@ if __name__ == '__main__':
             loss.backward()
             optimizer.step()
 
-            if batch_idx % 100 == 0:
+            if batch_idx == 0:
                 print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                     epoch, batch_idx * len(data), len(monet_loader.dataset),
                            100. * batch_idx / len(monet_loader), loss.item()))
                 average_sigma = torch.mean(torch.exp(0.5 * log_var).detach()).item()
                 print("average sigma: ", average_sigma)
             torch.save(vae.state_dict(), 'vae.pth')
-
-    vae.load_state_dict(torch.load('vae.pth'))
-    vae.eval()
-
-    # # TEST THE VAE
-    # vae.eval()
-    # test_loss = 0
-    # with torch.no_grad():
-    #     for i, (data, _) in enumerate(monet_loader):
-    #         data = data.view(-1, input_size)
-    #         x_mean, x_log_var, mu, log_var = vae(data)
-    #         test_loss += vae_loss(data, x_mean, x_log_var, mu, log_var).item()
     #
-    # test_loss /= len(monet_loader.dataset)
-    # print('Test set loss: {:.4f}'.format(test_loss))
+    # vae.load_state_dict(torch.load('vae.pth'))
+    # vae.eval()
+
+    # TEST THE VAE - no test dataset created for now
+    vae.eval()
+    test_loss = 0
+    with torch.no_grad():
+        for i, data in enumerate(monet_loader):
+            x_mean, x_log_var, mu, log_var = vae(data)
+            test_loss += vae_loss(data, x_mean, x_log_var, mu, log_var).item()
+
+    test_loss /= len(monet_loader.dataset)
+    print('Test set loss: {:.4f}'.format(test_loss))
 
     # Visualization
     vae.eval()
@@ -165,7 +179,7 @@ if __name__ == '__main__':
         figure = np.zeros((painting_size * n, painting_size * n))
         for i, xi in enumerate(np.linspace(-2, 2, n)):
             for j, yi in enumerate(np.linspace(-2, 2, n)):
-                z_sample = torch.randn(1, latent_size)
+                z_sample = torch.randn(16, latent_size)
                 x_decoded = vae.dec_mean(vae.decoder(z_sample)).cpu().numpy()
                 digit = x_decoded[0].reshape(painting_size, painting_size)
                 figure[
