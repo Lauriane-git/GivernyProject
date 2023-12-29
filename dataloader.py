@@ -25,6 +25,25 @@ class MonetDataset(Dataset):
         return image
 
 
+class MonetSubset(Dataset):
+    def __init__(self, base_dataset, indices, transform=None):
+        self.base_dataset = base_dataset
+        self.indices = indices
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.indices)
+
+    def __getitem__(self, idx):
+        base_idx = self.indices[idx]
+        sample = self.base_dataset[base_idx]
+
+        if self.transform:
+            sample = self.transform(sample)
+
+        return sample
+
+
 class PhotoDataset(Dataset):
     def __init__(self, folder_path, transform=None):
         self.folder_path = folder_path

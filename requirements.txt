@@ -3,3 +3,10 @@ torch
 numpy
 torchvision
 torchsummary
+imageio
+tqdm
+dlutils==0.0.2
+scikit-learn
+scikit-image
+tensorflow
+keras
