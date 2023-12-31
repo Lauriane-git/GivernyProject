@@ -26,23 +26,32 @@ class VAE(nn.Module):
         super(VAE, self).__init__()
 
         # Encoder
+
+        # Encoder
         self.encoder = nn.Sequential(
             nn.Conv2d(input_channels, 32, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(32),
             nn.ReLU(),
             nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(64),
             nn.ReLU(),
             nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(128),
             nn.ReLU(),
             nn.Conv2d(128, 256, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(256),
             nn.ReLU(),
             nn.Conv2d(256, 512, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(512),
             nn.ReLU(),
             nn.Conv2d(512, 1024, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(1024),
             nn.ReLU(),
             nn.Flatten(start_dim=1, end_dim=-1),
             nn.Linear(4096, 512),
             nn.ReLU(),
             nn.Linear(512, 256),  # Adjust the input size based on the image dimensions
+            nn.BatchNorm1d(256),
             nn.ReLU(),
         )
 
@@ -52,21 +61,28 @@ class VAE(nn.Module):
         # Decoder
         self.decoder = nn.Sequential(
             nn.Linear(latent_size, 256),
+            nn.BatchNorm1d(256),
             nn.ReLU(),
             nn.Linear(256, 512),  # Adjust the output size based on the image dimensions
             nn.ReLU(),
             nn.Linear(512, 4096),  # Adjusted sizes
             nn.ReLU(),
             nn.Unflatten(1, (1024, 2, 2)),  # Reshape to the shape before flattening in the encoder
+            nn.BatchNorm2d(1024),
             nn.ConvTranspose2d(1024, 512, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(512),
             nn.ReLU(),
             nn.ConvTranspose2d(512, 256, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(256),
             nn.ReLU(),
             nn.ConvTranspose2d(256, 128, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(128),
             nn.ReLU(),
             nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(64),
             nn.ReLU(),
             nn.ConvTranspose2d(64, 32, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(32),
             nn.ReLU(),
             nn.ConvTranspose2d(32, input_channels, kernel_size=4, stride=2, padding=1),
             nn.Tanh(),  # Tanh activation for the output layer to ensure values between -1 and 1
